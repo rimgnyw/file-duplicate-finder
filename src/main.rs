@@ -1,6 +1,6 @@
-use scanner::use_parallelism;
+use surveyor::use_parallelism;
 
-mod scanner;
+mod surveyor;
 
 fn main() {
     // if let Ok(enable_parallelism) = use_parallelism() {

@@ -1,5 +1,5 @@
 /*
-*   The scanner quickly scans all files to determine if
+*   The surveyor quickly scans all files to determine if
 *   parallelism is worth it
 *
 * */
@@ -13,35 +13,35 @@ use std::{
 const BASE_DIR: &str = "./testdata"; // the base directory used for testing
 const PARALLELISM_THREASHOLD: usize = 100; // the threshold where we decide parallelism is worth using
 
-struct FsEntry {
+struct Entry {
     is_dir: bool,
     path: PathBuf,
 }
 
-pub struct Scanner {
+pub struct Surveyor {
     count: usize,
-    queue: VecDeque<FsEntry>,
+    queue: VecDeque<Entry>,
 }
 pub fn use_parallelism() -> io::Result<bool> {
-    let mut scanner = Scanner::new(BASE_DIR)?;
-    let result = scanner.scan_dirs()?;
+    let mut surveyor = Surveyor::new(BASE_DIR)?;
+    let result = surveyor.scan_dirs()?;
     Ok(result)
 }
 
-impl Scanner {
-    pub fn new(base_dir: &str) -> io::Result<Scanner> {
-        let mut queue: VecDeque<FsEntry> = VecDeque::new();
+impl Surveyor {
+    pub fn new(base_dir: &str) -> io::Result<Surveyor> {
+        let mut queue: VecDeque<Entry> = VecDeque::new();
         let file = metadata(base_dir)?;
 
-        let entry = FsEntry {
+        let entry = Entry {
             is_dir: file.is_dir(),
             path: PathBuf::from(base_dir),
         };
 
         queue.push_back(entry);
 
-        let scanner = Scanner { count: 0, queue };
-        Ok(scanner)
+        let surveyor = Surveyor { count: 0, queue };
+        Ok(surveyor)
     }
 
     pub fn scan_dirs(&mut self) -> io::Result<bool> {
@@ -69,16 +69,16 @@ impl Scanner {
         Ok(false)
     }
 
-    fn find_entries(&self, path: PathBuf) -> io::Result<Vec<FsEntry>> {
+    fn find_entries(&self, path: PathBuf) -> io::Result<Vec<Entry>> {
         let objects = fs::read_dir(path)?
             .map(|res| {
                 let e = res?;
-                Ok(FsEntry {
+                Ok(Entry {
                     is_dir: e.file_type()?.is_dir(),
                     path: e.path(),
                 })
             })
-            .collect::<Result<Vec<FsEntry>, io::Error>>()?;
+            .collect::<Result<Vec<Entry>, io::Error>>()?;
 
         Ok(objects)
     }
