@@ -61,7 +61,9 @@ impl Scanner {
             self.count += objects.len();
 
             for object in objects {
-                self.queue.push_back(object);
+                if object.is_dir {
+                    self.queue.push_back(object);
+                }
             }
         }
         Ok(false)
