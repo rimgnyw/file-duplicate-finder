@@ -10,8 +10,7 @@ use std::{
     path::PathBuf,
 };
 
-const BASE_DIR: &str = "./testdata"; // the base directory used for testing
-const PARALLELISM_THREASHOLD: usize = 100; // the threshold where we decide parallelism is worth using
+const PARALLELISM_THREASHOLD: usize = 1000; // the threshold where we decide parallelism is worth using
 
 struct Entry {
     is_dir: bool,
@@ -22,8 +21,8 @@ pub struct Surveyor {
     count: usize,
     queue: VecDeque<Entry>,
 }
-pub fn use_parallelism() -> io::Result<bool> {
-    let mut surveyor = Surveyor::new(BASE_DIR)?;
+pub fn should_use_parallelism(root: &str) -> io::Result<bool> {
+    let mut surveyor = Surveyor::new(root)?;
     let result = surveyor.scan_dirs()?;
     Ok(result)
 }
@@ -70,7 +69,7 @@ impl Surveyor {
     }
 
     fn find_entries(&self, path: PathBuf) -> io::Result<Vec<Entry>> {
-        let objects = fs::read_dir(path)?
+        let entries = fs::read_dir(path)?
             .map(|res| {
                 let e = res?;
                 Ok(Entry {
@@ -80,6 +79,6 @@ impl Surveyor {
             })
             .collect::<Result<Vec<Entry>, io::Error>>()?;
 
-        Ok(objects)
+        Ok(entries)
     }
 }
