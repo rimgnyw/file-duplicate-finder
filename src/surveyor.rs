@@ -10,7 +10,7 @@ use std::{
     path::PathBuf,
 };
 
-const PARALLELISM_THREASHOLD: usize = 1000; // the threshold where we decide parallelism is worth using
+const PARALLELISM_THREASHOLD: usize = 100; // the threshold where we decide parallelism is worth using
 
 struct Entry {
     is_dir: bool,
