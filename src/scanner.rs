@@ -18,8 +18,6 @@ struct Entry {
 
 pub struct ThreadManager {
     // queue: Mutex<VecDeque<Entry>>,
-    send_queue: Sender<Entry>,
-    recieve_queue: Mutex<Receiver<Entry>>,
     // active_threads: Mutex<usize>,
     working_threads: AtomicUsize,
     max_threads: usize,
@@ -31,11 +29,8 @@ impl ThreadManager {
     fn new() -> io::Result<Self> {
         let max_threads = available_parallelism()?.get() - 1; // remove one thread spot to account for handler thread
 
-        let (send_queue, recieve_queue) = channel();
         Ok(ThreadManager {
             // queue,
-            send_queue,
-            recieve_queue: Mutex::new(recieve_queue),
             working_threads: AtomicUsize::new(0),
             max_threads,
             name_map: Mutex::new(HashMap::new()),
@@ -53,19 +48,24 @@ impl ThreadManager {
                     path: dir.to_path_buf().canonicalize().unwrap(),
                 };
 
-                self.send_queue.send(entry).unwrap();
+                let (send_queue, reciever) = channel();
+                let recieve_queue = Arc::new(Mutex::new(reciever));
+
+                send_queue.send(Some(entry)).unwrap();
 
                 let mut threads = Vec::new();
-                for _ in 0..7 {
+                for _ in 0..self.max_threads {
+                    let send_clone = send_queue.clone();
+                    let recieve_clone = recieve_queue.clone();
                     let self_clone = self.clone();
-                    let thread = thread::spawn(move || self_clone.threaded_scan());
+                    let thread =
+                        thread::spawn(move || self_clone.threaded_scan(send_clone, recieve_clone));
                     threads.push(thread);
                 }
 
                 for thread in threads {
                     let _ = thread.join().unwrap();
                 }
-                println!("I'm done waiting");
                 // let mut q = queue.lock().unwrap();
                 // q.push_back(entry);
                 // drop(q);
@@ -74,46 +74,54 @@ impl ThreadManager {
         }
     }
 
-    fn threaded_scan(self: &Arc<Self>) -> io::Result<()> {
+    fn threaded_scan(
+        self: &Arc<Self>,
+        send_queue: Sender<Option<Entry>>,
+        recieve_queue: Arc<Mutex<Receiver<Option<Entry>>>>,
+    ) -> io::Result<()> {
         // let mut active_threads = self.active_threads.lock().unwrap();
         // *active_threads += 1;
         // drop(active_threads);
 
-        let sender_clone = self.send_queue.clone();
+        // let sender_clone = send_queue.clone();
 
         loop {
             // blocks the thread until a task is recieved
             let task = {
-                let reciever = self.recieve_queue.lock().unwrap();
+                let reciever = recieve_queue.lock().unwrap();
                 reciever.recv()
             };
-            println!("new task");
 
             match task {
-                Ok(dir) => {
-                    let entries = self.find_entries(dir.path)?;
+                Ok(t) => match t {
+                    Some(dir) => {
+                        let entries = self.find_entries(dir.path)?;
 
-                    for entry in entries {
-                        if entry.is_dir {
-                            self.working_threads.fetch_add(1, Ordering::SeqCst);
-                            let _ = sender_clone.send(entry);
-                        } else {
-                            let mut names = self.name_map.lock().unwrap();
-                            match names.get_mut(&entry.name) {
-                                Some(name) => name.push(entry.path),
-                                None => _ = names.insert(entry.name, vec![entry.path]),
+                        for entry in entries {
+                            if entry.is_dir {
+                                self.working_threads.fetch_add(1, Ordering::SeqCst);
+                                let _ = send_queue.send(Some(entry));
+                            } else {
+                                let mut names = self.name_map.lock().unwrap();
+                                match names.get_mut(&entry.name) {
+                                    Some(name) => name.push(entry.path),
+                                    None => _ = names.insert(entry.name, vec![entry.path]),
+                                }
                             }
                         }
-                    }
 
-                    let prev = self.working_threads.fetch_sub(1, Ordering::SeqCst);
-                    println!("working threads: {}", prev);
-                    if prev == 1 {
-                        println!("got done");
-                        drop(sender_clone);
-                        break;
+                        let prev = self.working_threads.fetch_sub(1, Ordering::SeqCst);
+                        if prev == 1 {
+                            for _ in 0..self.max_threads {
+                                let _ = send_queue.send(None);
+                            }
+
+                            drop(send_queue);
+                            break;
+                        }
                     }
-                }
+                    None => break,
+                },
                 Err(_) => break,
             }
         }
@@ -135,14 +143,14 @@ impl ThreadManager {
         Ok(entries)
     }
 
-    pub fn list_dupes(&self) {
+    /* pub fn list_dupes(&self) {
         let map = self.name_map.lock().unwrap();
         for (name, paths) in map.iter() {
             if paths.len() > 1 {
                 println!("{:?} exists at {:?}", name, paths);
             }
         }
-    }
+    } */
 }
 
 pub struct Scanner {
@@ -181,28 +189,29 @@ impl Scanner {
         Ok(())
     }
 
-    pub fn list_dupes(&self) {
+    /*     pub fn list_dupes(&self) {
         for (name, paths) in &self.name_map {
             if paths.len() > 1 {
                 println!("{:?} exists at {:?}", name, paths);
             }
         }
-    }
+    } */
 }
-pub fn run_scan(root: &str) -> io::Result<()> {
+pub fn run_scan(root: &str) -> io::Result<HashMap<OsString, Vec<PathBuf>>> {
     if should_use_parallelism(root)? {
         let threaded_scanner = Arc::new(ThreadManager::new()?);
         threaded_scanner.run_parallel_scan(root);
         // threaded_scanner.list_dupes();
 
-        println!("parallelism done");
-
-        Ok(())
+        Ok(Arc::into_inner(threaded_scanner)
+            .unwrap()
+            .name_map
+            .into_inner()
+            .unwrap())
     } else {
         let mut sequential_scanner = Scanner::new();
         sequential_scanner.sequential_scan(PathBuf::from(root))?;
         // sequential_scanner.list_dupes();
-        println!("sequential done");
-        Ok(())
+        Ok(sequential_scanner.name_map)
     }
 }
