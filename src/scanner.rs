@@ -8,17 +8,13 @@ use std::thread::available_parallelism;
 use std::thread::{self};
 use std::{fs, io};
 
-use crate::surveyor::should_use_parallelism;
-
 struct Entry {
     is_dir: bool,
     name: OsString,
     path: PathBuf,
 }
 
-pub struct ThreadManager {
-    // queue: Mutex<VecDeque<Entry>>,
-    // active_threads: Mutex<usize>,
+struct ThreadManager {
     working_threads: AtomicUsize,
     max_threads: usize,
 
@@ -30,22 +26,30 @@ impl ThreadManager {
         let max_threads = available_parallelism()?.get() - 1; // remove one thread spot to account for handler thread
 
         Ok(ThreadManager {
-            // queue,
             working_threads: AtomicUsize::new(0),
             max_threads,
             name_map: Mutex::new(HashMap::new()),
         })
     }
 
-    fn run_parallel_scan(self: &Arc<Self>, base_dir: &str) {
+    fn run_parallel_scan(self: &Arc<Self>, base_dir: &str) -> io::Result<()> {
         let dir = Path::new(base_dir);
+
+        if !dir.is_dir() {
+            use std::io;
+
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("{:?} is not a directory", dir),
+            ));
+        }
 
         match dir.file_name() {
             Some(name) => {
                 let entry = Entry {
                     is_dir: true, // Surveyor wouldn't want to use threads if it wasn't a dir
                     name: name.to_os_string(),
-                    path: dir.to_path_buf().canonicalize().unwrap(),
+                    path: dir.to_path_buf().canonicalize()?,
                 };
 
                 let (send_queue, reciever) = channel();
@@ -66,12 +70,15 @@ impl ThreadManager {
                 for thread in threads {
                     let _ = thread.join().unwrap();
                 }
-                // let mut q = queue.lock().unwrap();
-                // q.push_back(entry);
-                // drop(q);
             }
-            _ => eprintln!("Invalid base directory path: {}", base_dir),
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Invalid base directory path: {}", base_dir),
+                ))
+            }
         }
+        Ok(())
     }
 
     fn threaded_scan(
@@ -79,12 +86,6 @@ impl ThreadManager {
         send_queue: Sender<Option<Entry>>,
         recieve_queue: Arc<Mutex<Receiver<Option<Entry>>>>,
     ) -> io::Result<()> {
-        // let mut active_threads = self.active_threads.lock().unwrap();
-        // *active_threads += 1;
-        // drop(active_threads);
-
-        // let sender_clone = send_queue.clone();
-
         loop {
             // blocks the thread until a task is recieved
             let task = {
@@ -142,76 +143,15 @@ impl ThreadManager {
 
         Ok(entries)
     }
-
-    /* pub fn list_dupes(&self) {
-        let map = self.name_map.lock().unwrap();
-        for (name, paths) in map.iter() {
-            if paths.len() > 1 {
-                println!("{:?} exists at {:?}", name, paths);
-            }
-        }
-    } */
 }
 
-pub struct Scanner {
-    name_map: HashMap<OsString, Vec<PathBuf>>,
-}
-
-impl Scanner {
-    pub fn new() -> Self {
-        Self {
-            name_map: HashMap::new(),
-        }
-    }
-
-    fn sequential_scan(&mut self, dir: PathBuf) -> io::Result<()> {
-        let entries = fs::read_dir(dir)?.map(|res| -> Result<Entry, std::io::Error> {
-            let e = res?;
-            Ok(Entry {
-                is_dir: e.file_type()?.is_dir(),
-                name: e.file_name(),
-                path: e.path().canonicalize()?,
-            })
-        });
-
-        for entry_result in entries {
-            let entry = entry_result?;
-            if entry.is_dir {
-                self.sequential_scan(entry.path)?;
-            } else {
-                match self.name_map.get_mut(&entry.name) {
-                    Some(name) => name.push(entry.path),
-                    None => _ = self.name_map.insert(entry.name, vec![entry.path]),
-                };
-            }
-        }
-
-        Ok(())
-    }
-
-    /*     pub fn list_dupes(&self) {
-        for (name, paths) in &self.name_map {
-            if paths.len() > 1 {
-                println!("{:?} exists at {:?}", name, paths);
-            }
-        }
-    } */
-}
 pub fn run_scan(root: &str) -> io::Result<HashMap<OsString, Vec<PathBuf>>> {
-    if should_use_parallelism(root)? {
-        let threaded_scanner = Arc::new(ThreadManager::new()?);
-        threaded_scanner.run_parallel_scan(root);
-        // threaded_scanner.list_dupes();
+    let threaded_scanner = Arc::new(ThreadManager::new()?);
+    threaded_scanner.run_parallel_scan(root)?;
 
-        Ok(Arc::into_inner(threaded_scanner)
-            .unwrap()
-            .name_map
-            .into_inner()
-            .unwrap())
-    } else {
-        let mut sequential_scanner = Scanner::new();
-        sequential_scanner.sequential_scan(PathBuf::from(root))?;
-        // sequential_scanner.list_dupes();
-        Ok(sequential_scanner.name_map)
-    }
+    Ok(Arc::into_inner(threaded_scanner)
+        .unwrap()
+        .name_map
+        .into_inner()
+        .unwrap())
 }
