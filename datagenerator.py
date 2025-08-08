@@ -52,7 +52,9 @@ def distribute_files(n, p, dirs):
         dir_path = random.choice(dirs)
         file_path = dir_path / filename
         file_path.touch()
-        file_locations[filename].append(file_path.resolve())
+        abs_path = file_path.resolve()
+        if abs_path not in file_locations[filename]:
+            file_locations[filename].append(abs_path)
         all_paths.append(file_path.resolve())
 
     return all_paths, file_locations
