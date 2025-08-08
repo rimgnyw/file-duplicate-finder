@@ -36,8 +36,6 @@ impl ThreadManager {
         let dir = Path::new(base_dir);
 
         if !dir.is_dir() {
-            use std::io;
-
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("{:?} is not a directory", dir),
@@ -47,7 +45,7 @@ impl ThreadManager {
         match dir.file_name() {
             Some(name) => {
                 let entry = Entry {
-                    is_dir: true, // Surveyor wouldn't want to use threads if it wasn't a dir
+                    is_dir: true,
                     name: name.to_os_string(),
                     path: dir.to_path_buf().canonicalize()?,
                 };
@@ -55,6 +53,7 @@ impl ThreadManager {
                 let (send_queue, reciever) = channel();
                 let recieve_queue = Arc::new(Mutex::new(reciever));
 
+                self.working_threads.fetch_add(1, Ordering::SeqCst);
                 send_queue.send(Some(entry)).unwrap();
 
                 let mut threads = Vec::new();

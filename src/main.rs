@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::env;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -9,12 +10,24 @@ use scanner::run_scan;
 
 mod scanner;
 
-const BASE_DIR: &str = "./testdata/100-files"; // the base directory used for testing
+// const BASE_DIR: &str = "./testdata/single-file"; // the base directory used for testing
 
 fn main() {
+    let mut args = env::args().skip(1);
+    let base_dir = args.next();
+    if base_dir.is_none() {
+        eprintln!("Error: Not enough arguments");
+        return;
+    }
+
+    if !args.next().is_none() {
+        eprintln!("Error: Too many arguments");
+        return;
+    }
+
     let start = Instant::now();
 
-    match run_scan(BASE_DIR) {
+    match run_scan(&base_dir.unwrap()) {
         Ok(result) => {
             let r = write_log_to_file(&result, "./scan.log");
             if r.is_err() {
@@ -43,11 +56,6 @@ fn write_log_to_file(
     let file = File::create(file_path)?;
     let mut writer = BufWriter::new(file);
 
-    if map.len() == 0 {
-        println!("No duplicates found");
-        writeln!(writer, "No duplicates found")?;
-        return Ok(());
-    }
     for (filename, paths) in map {
         if paths.len() > 1 {
             writeln!(writer, "{}:", filename.to_string_lossy())?;
