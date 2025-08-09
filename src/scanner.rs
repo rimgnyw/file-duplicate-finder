@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -23,7 +24,7 @@ struct ThreadManager {
 
 impl ThreadManager {
     fn new() -> io::Result<Self> {
-        let max_threads = available_parallelism()?.get() - 1; // remove one thread spot to account for handler thread
+        let max_threads = max(1, available_parallelism()?.get() - 1); // remove one thread spot to account for handler thread but make sure we have at least one worker
 
         Ok(ThreadManager {
             working_threads: AtomicUsize::new(0),
