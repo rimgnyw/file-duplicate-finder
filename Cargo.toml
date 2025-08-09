@@ -1,5 +1,5 @@
 [package]
-name = "file-name-comparer"
+name = "file-duplicate-finder"
 version = "0.1.0"
 edition = "2021"
 

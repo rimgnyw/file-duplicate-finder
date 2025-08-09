@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "file-name-comparer"
+name = "file-duplicate-finder"
 version = "0.1.0"
