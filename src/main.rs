@@ -4,7 +4,7 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
-use std::time::Instant;
+// use std::time::Instant;
 
 use scanner::run_scan;
 
@@ -29,7 +29,7 @@ fn main() {
 
     match run_scan(&base_dir.unwrap()) {
         Ok(result) => {
-            let r = write_log_to_file(&result, "./scan.log");
+            let r = write_log_to_file(&result, "./results.log");
             if r.is_err() {
                 eprintln!("Failed to write log");
             }
@@ -58,7 +58,7 @@ fn write_log_to_file(map: &HashMap<OsString, Vec<PathBuf>>, log_path: &str) -> s
         }
     }
     println!(
-        "Log written to:\n{}",
+        "Results written to:\n{}",
         PathBuf::from(log_path).canonicalize().unwrap().display()
     );
 
@@ -88,7 +88,7 @@ fn write_log_to_file(map: &HashMap<OsString, Vec<PathBuf>>, log_path: &str) -> s
         }
     }
     println!(
-        "Log written to:\n{}",
+        "Results written to:\n{}",
         normalise_paths(PathBuf::from(log_path).canonicalize().unwrap()).display()
     );
 
