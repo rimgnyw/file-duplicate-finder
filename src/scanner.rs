@@ -1,7 +1,7 @@
 use std::cmp::max;
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -33,7 +33,7 @@ impl ThreadManager {
         })
     }
 
-    fn run_parallel_scan(self: &Arc<Self>, base_dir: &str) -> io::Result<()> {
+    /* fn run_parallel_scan(self: &Arc<Self>, base_dir: &str) -> io::Result<()> {
         let dir = Path::new(base_dir);
 
         if !dir.is_dir() {
@@ -78,6 +78,60 @@ impl ThreadManager {
                 ))
             }
         }
+        Ok(())
+    } */
+    fn run_parallel_scan(self: &Arc<Self>, base_dirs: &Vec<PathBuf>) -> io::Result<()> {
+        // let dir = Path::new(base_dir);
+
+        let mut entry_list: Vec<Entry> = Vec::new();
+        for dir in base_dirs {
+            if !dir.is_dir() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("{:?} is not a directory", dir),
+                ));
+            }
+
+            match dir.file_name() {
+                Some(name) => {
+                    let entry = Entry {
+                        is_dir: true,
+                        name: name.to_os_string(),
+                        path: dir.to_owned(),
+                    };
+
+                    entry_list.push(entry);
+                }
+                _ => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("Unable to read file name for: {}", dir.display()),
+                    ))
+                }
+            }
+        }
+
+        let (send_queue, reciever) = channel();
+        let recieve_queue = Arc::new(Mutex::new(reciever));
+
+        for entry in entry_list {
+            self.working_threads.fetch_add(1, Ordering::SeqCst);
+            send_queue.send(Some(entry)).unwrap();
+        }
+
+        let mut threads = Vec::new();
+        for _ in 0..self.max_threads {
+            let send_clone = send_queue.clone();
+            let recieve_clone = recieve_queue.clone();
+            let self_clone = self.clone();
+            let thread = thread::spawn(move || self_clone.threaded_scan(send_clone, recieve_clone));
+            threads.push(thread);
+        }
+
+        for thread in threads {
+            let _ = thread.join().unwrap();
+        }
+
         Ok(())
     }
 
@@ -145,9 +199,9 @@ impl ThreadManager {
     }
 }
 
-pub fn run_scan(root: &str) -> io::Result<HashMap<OsString, Vec<PathBuf>>> {
+pub fn run_scan(base_dirs: &Vec<PathBuf>) -> io::Result<HashMap<OsString, Vec<PathBuf>>> {
     let threaded_scanner = Arc::new(ThreadManager::new()?);
-    threaded_scanner.run_parallel_scan(root)?;
+    threaded_scanner.run_parallel_scan(base_dirs)?;
 
     Ok(Arc::into_inner(threaded_scanner)
         .unwrap()

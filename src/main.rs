@@ -1,9 +1,12 @@
 use std::collections::HashMap;
-use std::env;
+use std::env::Args;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::iter::Skip;
 use std::path::PathBuf;
+use std::process::exit;
+use std::{env, io};
 // use std::time::Instant;
 
 use scanner::run_scan;
@@ -13,21 +16,17 @@ mod scanner;
 // const BASE_DIR: &str = "./testdata/single-file"; // the base directory used for testing
 
 fn main() {
-    let mut args = env::args().skip(1);
-    let base_dir = args.next();
-    if base_dir.is_none() {
-        eprintln!("Error: Not enough arguments");
-        return;
-    }
+    let args = env::args().skip(1);
 
-    if !args.next().is_none() {
-        eprintln!("Error: Too many arguments");
-        return;
-    }
+    let args = match parse_args(args) {
+        Ok(paths) => paths,
+        Err(_) => {
+            eprintln!("invalid arguments");
+            exit(1)
+        }
+    };
 
-    // let start = Instant::now();
-
-    match run_scan(&base_dir.unwrap()) {
+    match run_scan(&args) {
         Ok(result) => {
             let r = write_log_to_file(&result, "./results.log");
             if r.is_err() {
@@ -42,6 +41,33 @@ fn main() {
 
     // let duration = start.elapsed();
     // println!("Time Elapse: {:?}", duration);
+}
+
+fn parse_args(args: Skip<Args>) -> io::Result<Vec<PathBuf>> {
+    let mut args = args
+        .map(PathBuf::from)
+        .map(|path| path.canonicalize())
+        .collect::<Result<Vec<PathBuf>, io::Error>>()?;
+
+    args.sort_by_key(|path| path.components().count());
+
+    let mut result: Vec<PathBuf> = Vec::new();
+
+    let mut found_subdirs = false;
+    // Filter out any paths that are contained by other paths
+    for arg in args {
+        if !result.iter().any(|prefix| arg.starts_with(prefix)) {
+            result.push(arg);
+        } else {
+            found_subdirs = true;
+        }
+    }
+
+    if found_subdirs {
+        println!("INFO: Nested directories were removed");
+    }
+
+    Ok(result)
 }
 
 #[cfg(not(target_os = "windows"))]
