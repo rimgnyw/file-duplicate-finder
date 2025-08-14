@@ -1,6 +1,7 @@
+use md5::Digest;
+use scanner::Entry;
 use std::collections::HashMap;
 use std::env::Args;
-use std::ffi::OsString;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::iter::Skip;
@@ -49,6 +50,13 @@ fn parse_args(args: Skip<Args>) -> io::Result<Vec<PathBuf>> {
         .map(|path| path.canonicalize())
         .collect::<Result<Vec<PathBuf>, io::Error>>()?;
 
+    if args.len() == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Not enough arguments",
+        ));
+    }
+
     args.sort_by_key(|path| path.components().count());
 
     let mut result: Vec<PathBuf> = Vec::new();
@@ -71,18 +79,26 @@ fn parse_args(args: Skip<Args>) -> io::Result<Vec<PathBuf>> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn write_log_to_file(map: &HashMap<OsString, Vec<PathBuf>>, log_path: &str) -> std::io::Result<()> {
+fn write_log_to_file(map: &HashMap<Digest, Vec<Entry>>, log_path: &str) -> std::io::Result<()> {
     let file = File::create(log_path)?;
     let mut writer = BufWriter::new(file);
 
-    for (filename, paths) in map {
-        if paths.len() > 1 {
-            writeln!(writer, "{}:", filename.to_string_lossy())?;
-            for path in paths {
-                writeln!(writer, "  {}", path.to_owned().display())?;
+    let mut counter = 0;
+    for (file_hash, entries) in map {
+        if entries.len() > 1 {
+            writeln!(
+                writer,
+                "{:?} (with hash {:?}):",
+                entries.get(0).unwrap().name,
+                file_hash
+            )?;
+            for entry in entries {
+                writeln!(writer, "  {}", entry.path.to_owned().display())?;
             }
+            counter += 1;
         }
     }
+    println!("Found {} duplicates", counter);
     println!(
         "Results written to:\n{}",
         PathBuf::from(log_path).canonicalize().unwrap().display()
@@ -101,18 +117,30 @@ fn normalise_paths(path: PathBuf) -> PathBuf {
 }
 
 #[cfg(target_os = "windows")]
-fn write_log_to_file(map: &HashMap<OsString, Vec<PathBuf>>, log_path: &str) -> std::io::Result<()> {
+fn write_log_to_file(map: &HashMap<Digest, Vec<Entry>>, log_path: &str) -> std::io::Result<()> {
     let file = File::create(log_path)?;
     let mut writer = BufWriter::new(file);
 
-    for (filename, paths) in map {
-        if paths.len() > 1 {
-            writeln!(writer, "{}:", filename.to_string_lossy())?;
-            for path in paths {
-                writeln!(writer, "  {}", normalise_paths(path.to_owned()).display())?;
+    let mut counter = 0;
+    for (file_hash, entries) in map {
+        if entries.len() > 1 {
+            writeln!(
+                writer,
+                "{:?} (with hash {:?}):",
+                entries.get(0).unwrap().name,
+                file_hash
+            )?;
+            for entry in entries {
+                writeln!(
+                    writer,
+                    "  {}",
+                    normalise_paths(entry.path.to_owned()).display()
+                )?;
             }
+            counter += 1;
         }
     }
+    println!("Found {} duplicates", counter);
     println!(
         "Results written to:\n{}",
         normalise_paths(PathBuf::from(log_path).canonicalize().unwrap()).display()

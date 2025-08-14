@@ -3,6 +3,7 @@ import shutil
 import argparse
 from collections import defaultdict
 from pathlib import Path
+import string
 
 def create_nested_dirs(root, m, k, i):
     all_dirs = []
@@ -24,6 +25,10 @@ def create_nested_dirs(root, m, k, i):
 
     return all_dirs
 
+
+def random_content(size=100):
+    return ''.join(random.choices(string.ascii_letters + string.digits + " \n", k=size))
+
 def distribute_files(n, p, dirs):
     num_dupes = int(n * p / 100)
     num_unique = n - num_dupes
@@ -33,8 +38,14 @@ def distribute_files(n, p, dirs):
 
     unique_filenames = [f"u{i}.txt" for i in range(1, num_unique + 1)]
 
+    # Assign each unique file its own random content
+    unique_contents = {fname: random_content() for fname in unique_filenames}
+
     max_dupe_names = min(num_dupes // 2, 20)
     dupe_filenames = [f"d{i}.txt" for i in range(1, max_dupe_names + 1)]
+
+    # Assign each duplicate group a shared random content
+    dupe_contents = {fname: random_content() for fname in dupe_filenames}
 
     dupe_file_list = []
     total_dupe_files = 0
@@ -51,7 +62,17 @@ def distribute_files(n, p, dirs):
     for filename in file_list:
         dir_path = random.choice(dirs)
         file_path = dir_path / filename
-        file_path.touch()
+
+        # Pick correct content based on whether it's unique or duplicate
+        if filename.startswith("u"):
+            content = unique_contents[filename]
+        else:
+            content = dupe_contents[filename]
+
+        # Write file with content
+        with open(file_path, "w") as f:
+            f.write(content)
+
         abs_path = file_path.resolve()
         if abs_path not in file_locations[filename]:
             file_locations[filename].append(abs_path)
