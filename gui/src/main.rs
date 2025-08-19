@@ -1,10 +1,9 @@
-use std::{env, ops::Index, path::PathBuf, process::Command};
+use std::{env, path::PathBuf, process::Command};
 
 use druid::{
-    AppDelegate, AppLauncher, Color, Data, Env, EventCtx, Lens, LocalizedString, PlatformError,
-    Selector, Widget, WidgetExt, WindowDesc,
-    platform_menus::win::file::exit,
-    widget::{Align, Button, Container, Either, Flex, Label, List, Padding, Scope, Scroll},
+    AppDelegate, AppLauncher, Color, Data, Env, EventCtx, Lens, PlatformError, Selector, Widget,
+    WidgetExt, WindowDesc,
+    widget::{Align, Button, Container, Either, Flex, Label, List, Scroll},
 };
 use rfd::FileDialog;
 use std::sync::Arc;
