@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 use md5::Digest;
 use scanner::Entry;
 use std::collections::HashMap;

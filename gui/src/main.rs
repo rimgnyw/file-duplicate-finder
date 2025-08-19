@@ -1,9 +1,10 @@
+#![windows_subsystem = "windows"]
 use std::{env, path::PathBuf, process::Command};
 
 use druid::{
+    widget::{Align, Button, Container, Either, Flex, Label, List, Scroll},
     AppDelegate, AppLauncher, Color, Data, Env, EventCtx, Lens, PlatformError, Selector, Widget,
     WidgetExt, WindowDesc,
-    widget::{Align, Button, Container, Either, Flex, Label, List, Scroll},
 };
 use rfd::FileDialog;
 use std::sync::Arc;
@@ -29,7 +30,7 @@ fn get_exe_dir() -> PathBuf {
 
 fn main() -> Result<(), PlatformError> {
     println!("{:?}", get_exe_dir().join("file-duplicate-finder"));
-    let main_window = WindowDesc::new(ui_builder())
+    let main_window = WindowDesc::new(ui_builder()).window_size((500.,400.))
         /* .with_min_size((WINDOW_WIDTH, WINDOW_HEIGHT)) */;
     let initial_state = AppState {
         selected_folders: Arc::new(Vec::new()),

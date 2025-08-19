@@ -41,7 +41,7 @@ windows:
 
 	mkdir -p dist/windows
 
-	cp scanner/target/$(WINDOWS_TARGET)/release/file-duplicate-finder.exe dist/windows/file-duplicate-finder-win64.exe
+	cp scanner/target/$(WINDOWS_TARGET)/release/file-duplicate-finder.exe dist/windows/file-duplicate-finder.exe
 	 cp  gui/target/$(WINDOWS_TARGET)/release/gui.exe dist/windows
 
 get_targets:
