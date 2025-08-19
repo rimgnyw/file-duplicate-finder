@@ -7,3 +7,6 @@ edition = "2024"
 druid = "0.8.3"
 rfd = "0.15.4"
 open = "5.3.2"
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
