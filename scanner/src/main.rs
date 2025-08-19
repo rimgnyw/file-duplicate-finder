@@ -16,6 +16,15 @@ mod scanner;
 
 // const BASE_DIR: &str = "./testdata/single-file"; // the base directory used for testing
 
+fn get_exe_dir() -> String {
+    String::from(
+        env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_string_lossy(),
+    )
+}
 fn main() {
     let args = env::args().skip(1);
 
@@ -29,7 +38,7 @@ fn main() {
 
     match run_scan(&args) {
         Ok(result) => {
-            let r = write_log_to_file(&result, "./results.log");
+            let r = write_log_to_file(&result, &(get_exe_dir() + "/results.log"));
             if r.is_err() {
                 eprintln!("Failed to write log");
             }

@@ -4,7 +4,7 @@ use druid::{
     AppDelegate, AppLauncher, Color, Data, Env, EventCtx, Lens, LocalizedString, PlatformError,
     Selector, Widget, WidgetExt, WindowDesc,
     platform_menus::win::file::exit,
-    widget::{Button, Container, Either, Flex, Label, List, Padding, Scope, Scroll},
+    widget::{Align, Button, Container, Either, Flex, Label, List, Padding, Scope, Scroll},
 };
 use rfd::FileDialog;
 use std::sync::Arc;
@@ -21,10 +21,15 @@ enum Page {
     PostOp,
 }
 
+fn get_exe_dir() -> PathBuf {
+    env::current_exe().unwrap().parent().unwrap().to_path_buf()
+}
+
 // const WINDOW_WIDTH: f64 = 500.0;
 // const WINDOW_HEIGHT: f64 = 600.0;
 
 fn main() -> Result<(), PlatformError> {
+    println!("{:?}", get_exe_dir().join("file-duplicate-finder"));
     let main_window = WindowDesc::new(ui_builder())
         /* .with_min_size((WINDOW_WIDTH, WINDOW_HEIGHT)) */;
     let initial_state = AppState {
@@ -48,19 +53,27 @@ fn ui_builder() -> impl Widget<AppState> {
 const FOLDER_CLICKED: Selector<String> = Selector::new("app.folder-clicked");
 
 fn pre_op_page() -> impl Widget<AppState> {
-    let button = Button::new("Select Folders").on_click(|_ctx, data: &mut AppState, _env| {
-        if let Some(folders) = FileDialog::new()
-            .set_directory(env::current_dir().unwrap())
-            .pick_folders()
-        {
-            data.selected_folders = Arc::new(
-                folders
+    let folder_select_button =
+        Button::new("Select Folders").on_click(|_ctx, data: &mut AppState, _env| {
+            if let Some(folders) = FileDialog::new()
+                .set_directory(env::current_dir().unwrap())
+                .pick_folders()
+            {
+                let folders = folders
                     .into_iter()
                     .map(|f| f.display().to_string())
-                    .collect(),
-            );
-        }
-    });
+                    .collect::<Vec<String>>();
+
+                let result = data
+                    .selected_folders
+                    .iter()
+                    .cloned()
+                    .chain(folders.into_iter())
+                    .collect::<Vec<String>>();
+
+                data.selected_folders = Arc::new(result);
+            }
+        });
 
     let folder_list = Scroll::new(
         List::new(|| {
@@ -84,11 +97,9 @@ fn pre_op_page() -> impl Widget<AppState> {
             for folder in data.selected_folders.iter() {
                 println!("{:?}", folder);
             }
-            let output = Command::new("./file-duplicate-finder")
+            let output = Command::new(get_exe_dir().join("file-duplicate-finder"))
                 .args(data.selected_folders.iter())
                 .output();
-
-            // println!("{:?}", output);
 
             if let Ok(out) = output {
                 println!(
@@ -111,10 +122,12 @@ fn pre_op_page() -> impl Widget<AppState> {
         });
 
     Flex::column()
-        .with_child(button)
+        .with_flex_spacer(0.5)
+        .with_child(folder_select_button)
         .with_child(Label::new("Selected Folders:"))
         .with_child(folder_container)
         .with_child(run_button)
+        .with_flex_spacer(1.0)
 }
 
 fn error_popup() -> impl Widget<AppState> {
@@ -129,22 +142,36 @@ fn error_popup() -> impl Widget<AppState> {
 }
 
 fn post_op_page() -> impl Widget<AppState> {
-    Flex::column()
-        .with_child(Label::new("Scan complete"))
-        .with_flex_child(
-            Flex::row()
-                .with_child(Button::new("Go back").on_click(
-                    |ctx: &mut EventCtx, data: &mut AppState, _| {
-                        data.page = Page::PreOp;
-                        ctx.request_update();
-                    },
-                ))
-                .with_child(Button::new("View scan log").on_click(|_, _, _| {
-                    let _ = open::that("./results.log");
-                }))
-                .with_child(Button::new("Exit").on_click(|ctx, _, _| ctx.window().close())),
-            1.0,
-        )
+    Align::centered(
+        Flex::column()
+            .with_flex_spacer(1.0)
+            .with_child(Label::new("Scan complete").padding(10.))
+            .with_child(
+                Button::new("View scan log")
+                    .on_click(|_, _, _| {
+                        let _ = open::that(get_exe_dir().join("results.log"));
+                    })
+                    .padding(10.),
+            )
+            .with_flex_child(
+                Flex::row()
+                    .with_child(
+                        Button::new("Go back")
+                            .on_click(|ctx: &mut EventCtx, data: &mut AppState, _| {
+                                data.page = Page::PreOp;
+                                ctx.request_update();
+                            })
+                            .padding(10.),
+                    )
+                    .with_child(
+                        Button::new("Exit")
+                            .on_click(|ctx, _, _| ctx.window().close())
+                            .padding(10.),
+                    ),
+                1.0,
+            )
+            .with_flex_spacer(1.0),
+    )
 }
 
 struct Delegate;
