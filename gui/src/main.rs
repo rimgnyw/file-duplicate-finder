@@ -1,10 +1,10 @@
-use std::{env, path::PathBuf};
+use std::{env, ops::Index, path::PathBuf, process::Command};
 
 use druid::{
-    AppLauncher, Color, Data, Env, EventCtx, Lens, LocalizedString, PlatformError, Widget,
-    WidgetExt, WindowDesc,
+    AppDelegate, AppLauncher, Color, Data, Env, EventCtx, Lens, LocalizedString, PlatformError,
+    Selector, Widget, WidgetExt, WindowDesc,
     platform_menus::win::file::exit,
-    widget::{Button, Container, Either, Flex, Label, List, Padding, Scroll},
+    widget::{Button, Container, Either, Flex, Label, List, Padding, Scope, Scroll},
 };
 use rfd::FileDialog;
 use std::sync::Arc;
@@ -32,6 +32,7 @@ fn main() -> Result<(), PlatformError> {
         page: Page::PreOp,
     };
     AppLauncher::with_window(main_window)
+        .delegate(Delegate)
         .log_to_console()
         .launch(initial_state)
 }
@@ -43,6 +44,8 @@ fn ui_builder() -> impl Widget<AppState> {
         post_op_page(),
     )
 }
+
+const FOLDER_CLICKED: Selector<String> = Selector::new("app.folder-clicked");
 
 fn pre_op_page() -> impl Widget<AppState> {
     let button = Button::new("Select Folders").on_click(|_ctx, data: &mut AppState, _env| {
@@ -59,25 +62,17 @@ fn pre_op_page() -> impl Widget<AppState> {
         }
     });
 
-    /* let folder_list = Scroll::new(
-        Flex::column()
-            .with_child(Label::new(|data: &AppState, _env: &Env| {
-                if data.selected_folders.is_empty() {
-                    "".to_string()
-                } else {
-                    data.selected_folders.join("\n")
-                }
-            }))
-            .padding(5.0),
-    ); */
     let folder_list = Scroll::new(
         List::new(|| {
-            Button::new(|item: &String, _env: &Env| item.clone())
-                .on_click(|_ctx, item: &mut String, _env| println!("{}", item))
+            Button::new(|item: &String, _env: &Env| item.clone()).on_click(
+                |ctx, item: &mut String, _env| {
+                    ctx.submit_command(FOLDER_CLICKED.with(item.clone()));
+                    ctx.request_update();
+                },
+            )
         })
         .lens(AppState::selected_folders),
     );
-
     let folder_container = Container::new(folder_list)
         .border(Color::WHITE, 2.0)
         .rounded(10.0)
@@ -89,8 +84,30 @@ fn pre_op_page() -> impl Widget<AppState> {
             for folder in data.selected_folders.iter() {
                 println!("{:?}", folder);
             }
-            data.page = Page::PostOp;
-            ctx.request_update();
+            let output = Command::new("./file-duplicate-finder")
+                .args(data.selected_folders.iter())
+                .output();
+
+            // println!("{:?}", output);
+
+            if let Ok(out) = output {
+                println!(
+                    "{:?}\n{}\n{}",
+                    out.status.code(),
+                    String::from_utf8_lossy(&out.stdout),
+                    String::from_utf8_lossy(&out.stdout)
+                );
+
+                if out.status.code().is_none_or(|x| x != 0) {
+                    let error_window = WindowDesc::new(error_popup())
+                        .title("Error")
+                        .window_size((300., 150.));
+                    ctx.new_window(error_window);
+                } else {
+                    data.page = Page::PostOp;
+                    ctx.request_update();
+                }
+            }
         });
 
     Flex::column()
@@ -100,8 +117,58 @@ fn pre_op_page() -> impl Widget<AppState> {
         .with_child(run_button)
 }
 
+fn error_popup() -> impl Widget<AppState> {
+    Flex::column()
+        .with_child(
+            Label::new("An error occured while trying to scan the directory")
+                .with_line_break_mode(druid::widget::LineBreaking::WordWrap),
+        )
+        .with_child(Button::new("Close").on_click(|ctx, _, _| {
+            ctx.window().close();
+        }))
+}
+
 fn post_op_page() -> impl Widget<AppState> {
     Flex::column()
-        .with_child(Label::new("You did it"))
-        .with_child(Button::new("Exit").on_click(|ctx, _, _| ctx.window().close()))
+        .with_child(Label::new("Scan complete"))
+        .with_flex_child(
+            Flex::row()
+                .with_child(Button::new("Go back").on_click(
+                    |ctx: &mut EventCtx, data: &mut AppState, _| {
+                        data.page = Page::PreOp;
+                        ctx.request_update();
+                    },
+                ))
+                .with_child(Button::new("View scan log").on_click(|_, _, _| {
+                    let _ = open::that("./results.log");
+                }))
+                .with_child(Button::new("Exit").on_click(|ctx, _, _| ctx.window().close())),
+            1.0,
+        )
+}
+
+struct Delegate;
+
+impl AppDelegate<AppState> for Delegate {
+    fn command(
+        &mut self,
+        _ctx: &mut druid::DelegateCtx,
+        _target: druid::Target,
+        cmd: &druid::Command,
+        data: &mut AppState,
+        _env: &Env,
+    ) -> druid::Handled {
+        if let Some(folder) = cmd.get(FOLDER_CLICKED) {
+            data.selected_folders = Arc::new(
+                data.selected_folders
+                    .iter()
+                    .filter(|x| *x != folder)
+                    .cloned()
+                    .collect(),
+            );
+
+            return druid::Handled::Yes;
+        }
+        druid::Handled::No
+    }
 }
